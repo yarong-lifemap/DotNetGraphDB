@@ -15,10 +15,14 @@ namespace DotNetGraphDB.Jena
 
         private const string DB_TYPE_TDB2 = "tdb2";
 
-        public JenaDbConnector(string baseUrl)
+        public JenaDbConnector(string baseUrl, int timeoutSeconds = 60)
         {
             var settings = new RefitSettings(new NewtonsoftJsonContentSerializer());
-            _jenaApi = RestService.For<IJenaApi>(baseUrl, settings);
+            _jenaApi = RestService.For<IJenaApi>(new HttpClient
+            {
+                BaseAddress = new Uri(baseUrl),
+                Timeout = TimeSpan.FromSeconds(timeoutSeconds)
+            }, settings);
         }
 
         /// <summary>
