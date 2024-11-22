@@ -1,8 +1,7 @@
-﻿using System.Net.Mime;
-using Refit;
-using System.Text;
-using Newtonsoft.Json;
+﻿using DotNetGraphDB.Base;
+using DotNetGraphDB.Jena.Requests;
 using DotNetGraphDB.Sparql;
+using Refit;
 
 namespace DotNetGraphDB.Jena
 {
@@ -10,7 +9,7 @@ namespace DotNetGraphDB.Jena
     /// Wrapper for Apache Jena, built by inspecting requests to the Jena Fuseki server.
     /// Uses Refit for REST API calls
     /// </summary>
-    public class JenaDbConnector
+    public class JenaDbConnector: DbConnectorBase
     {
         private readonly IJenaApi _jenaApi;
 
@@ -18,11 +17,30 @@ namespace DotNetGraphDB.Jena
 
         public JenaDbConnector(string baseUrl)
         {
-            _jenaApi = RestService.For<IJenaApi>(baseUrl);
+            var settings = new RefitSettings(new NewtonsoftJsonContentSerializer());
+            _jenaApi = RestService.For<IJenaApi>(baseUrl, settings);
         }
 
         /// <summary>
-        /// Create a new repository with a given ID and Title
+        /// Get the list of datasets available on the JENA server
+        /// </summary>
+        public override async Task<string[]> GetDatasetNames()
+        {
+            var response = await _jenaApi.GetDatasets();
+            if (response.IsSuccessful)
+            {
+                return response.Content.Datasets
+                    .Select(x => x.Name)
+                    .ToArray();
+            }
+            else
+            {
+                throw new Exception($"Failed to get datasets: {response.Content}");
+            }
+        }
+
+        /// <summary>
+        /// Create a new repository, providing a dataset ID
         /// </summary>
         public async Task CreateRepository(string id)
         {
@@ -40,7 +58,7 @@ namespace DotNetGraphDB.Jena
         }
 
         /// <summary>
-        /// Delete a repository from GraphDB using its ID
+        /// Delete a repository using its dataset ID
         /// </summary>
         public async Task DeleteRepository(string repositoryId)
         {
@@ -52,70 +70,36 @@ namespace DotNetGraphDB.Jena
             }
         }
 
-        /*
-        /// <summary>
-        /// Get list of repositories in the GraphDB
-        /// </summary>
-        public async Task<IEnumerable<RepositoryInfo>> GetRepositoryList()
-        {
-            var repos = await _jenaApi.GetRepositoryList();
-            return repos.GetResults();
-        }
-
-        /// <summary>
-        /// Check if a repository with a given ID exists
-        /// </summary>
-        public async Task<bool> IsRepositoryExists(string repositoryId)
-        {
-            var repos = await GetRepositoryList();
-            return repos.Any(r => r.Id == repositoryId);
-        }
-
-        /// <summary>
-        /// Upload and import a TTL file to a repository
-        /// </summary>
-        public async Task ImportFile(string repositoryId, string filePath, bool stopOnError = true)
-        {
-            var fileName = new FileInfo(filePath).Name;
-
-            using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
-            {
-                var mimeType = MimeTypesMap.GetMimeType(fileName);
-                var importSettings = new FileImportSettings() { Name = fileName };
-                if (!stopOnError)
-                    importSettings.ParserSettings = new ParserSettings { StopOnError = false };
-                var json = JsonConvert.SerializeObject(importSettings, Formatting.Indented);
-
-                using (var ms = new MemoryStream(Encoding.UTF8.GetBytes(json)))
-                    await _jenaApi.UploadFile(
-                        repositoryId,
-                        new StreamPart(fs, fileName, mimeType),
-                        new StreamPart(ms, "blob", MediaTypeNames.Application.Json)
-                    );
-            }
-        }
-
-        /// <summary>
-        /// Check the status of file import requests (all)
-        /// </summary>
-        public async Task<IEnumerable<UploadFileStatus>> GetFileImportStatus(string repositoryId)
-        {
-            return await _jenaApi.GetImportStatus(repositoryId);
-        }
-        */
-
         /// <summary>
         /// Execute a typed SPARQL query and return the results. Uses pages of 1,000.
         /// </summary>
-        public async Task<IEnumerable<T>> ExecuteSparqlQuery<T>(string repoId, string query) where T : class, new()
+        public async Task<IEnumerable<T>> ExecuteSparqlQuery<T>(string datasetName, string query) where T : class, new()
         {
             var request = new SparqlQueryRequest()
             {
                 Query = query,
             };
 
-            var reqResult = await _jenaApi.ExecuteSparqlQuery<T>(repoId, request);
+            var reqResult = await _jenaApi.ExecuteSparqlQuery<T>(datasetName, request);
             return reqResult.GetResults();
+        }
+
+        /// <summary>
+        /// Add data to a dataset from a given file
+        /// </summary>
+        public async Task ImportFile(string datasetName, string fileName)
+        {
+            if (!File.Exists(fileName))
+                throw new FileNotFoundException("File not found", fileName);
+
+            var response = await _jenaApi.UploadFile(
+                datasetName, 
+                new StreamPart(new FileStream(fileName, FileMode.Open), new FileInfo(fileName).Name, "application/octet-stream")
+            );
+            if (!response.IsSuccessful)
+            {
+                throw new Exception($"Failed to upload file: {response.Content}");
+            }
         }
     }
 }
