@@ -34,7 +34,7 @@ namespace DotNetGraphDB.Jena
             if (response.IsSuccessful)
             {
                 return response.Content.Datasets
-                    .Select(x => x.Name)
+                    .Select(x => x.Name.TrimStart('/'))
                     .ToArray();
             }
             else
