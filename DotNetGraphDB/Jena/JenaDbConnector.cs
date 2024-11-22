@@ -1,5 +1,6 @@
 ﻿using DotNetGraphDB.Base;
 using DotNetGraphDB.Jena.Requests;
+using DotNetGraphDB.Jena.Responses;
 using DotNetGraphDB.Sparql;
 using Refit;
 
@@ -91,7 +92,7 @@ namespace DotNetGraphDB.Jena
         /// <summary>
         /// Add data to a dataset from a given file
         /// </summary>
-        public async Task ImportFile(string datasetName, string fileName)
+        public async Task<JenaUploadFileResponse> ImportFile(string datasetName, string fileName)
         {
             if (!File.Exists(fileName))
                 throw new FileNotFoundException("File not found", fileName);
@@ -104,6 +105,8 @@ namespace DotNetGraphDB.Jena
             {
                 throw new Exception($"Failed to upload file: {response.Content}");
             }
+
+            return response.Content;
         }
     }
 }
